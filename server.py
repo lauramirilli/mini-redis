@@ -1,5 +1,6 @@
 import socket
 import selectors
+import time
 
 # Configurações de endereço e porta
 HOST = '127.0.0.1'  # 'localhost' (escuta apenas conexões locais)
@@ -48,16 +49,33 @@ def atender_cliente(client_socket, dado_extra):
         parse = linha.split(" ")
         comando = parse[0]
         chave = parse[1]
-        valor = " ".join(parse[2:])
+
+        if len(parse) >= 2 and parse[-2].upper() == "EX":
+            ttl = int(parse[-1])
+            valor = " ".join(parse[2:-2])
+        else:
+            ttl = -1
+            valor = " ".join(parse[2:])
 
         resposta = ""
 
         if comando.upper() == 'SET':
-            dicionario[chave] = valor
+            agora = time.monotonic() * 1000
+            if ttl == -1:
+                quando_expira = -1
+            else:
+                quando_expira = agora + (ttl * 1000) 
+        
+            dicionario[chave] = (valor, quando_expira)
             resposta = "OK\n"
         elif comando.upper() == 'GET':
-            resultado = dicionario.get(chave, "chave não existe")
-            resposta = f"{resultado}\n"
+            valor, quando_expira = dicionario.get(chave, ("chave não existe", -1))
+            agora = time.monotonic() * 1000
+            if quando_expira == -1 or agora <= quando_expira:
+                resposta = f"{valor}\n"
+            else:
+                dicionario.pop(chave)
+                resposta = f"a chave {chave} expirou\n"
         elif comando.upper() == 'DEL':
             try:
                 dicionario.pop(chave)
