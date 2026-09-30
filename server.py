@@ -1,11 +1,13 @@
 import socket
 import selectors
 import time
+import heapq
 
 # Configurações de endereço e porta
 HOST = '127.0.0.1'  # 'localhost' (escuta apenas conexões locais)
 PORT = 65432        # Portas acima de 1023 não exigem privilégios de administrador
 dicionario = dict()
+heap = []
 
 sel = selectors.DefaultSelector()
 
@@ -65,7 +67,7 @@ def atender_cliente(client_socket, dado_extra):
                 quando_expira = -1
             else:
                 quando_expira = agora + (ttl * 1000) 
-        
+                heapq.heappush(heap, (quando_expira, chave))        
             dicionario[chave] = (valor, quando_expira)
             resposta = "OK\n"
         elif comando.upper() == 'GET':
@@ -88,9 +90,18 @@ def atender_cliente(client_socket, dado_extra):
         # Envia os dados de volta para o cliente (Echo)
         client_socket.sendall(resposta.encode('utf-8'))
 
+def expirar_chaves():
+    agora = time.monotonic() * 1000
+    while heap and heap[0][0] < agora:
+        quando_expira_heap, chave_heap = heapq.heappop(heap)
+        if chave_heap in dicionario and dicionario[chave_heap][1] == quando_expira_heap:
+            dicionario.pop(chave_heap)
+
 try:
     while True:
-        eventos = sel.select()
+        eventos = sel.select(timeout=1)
+
+        expirar_chaves()
 
         for key, mask in eventos:
             socket_pronto = key.fileobj
