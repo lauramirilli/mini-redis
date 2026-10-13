@@ -3,23 +3,16 @@ import selectors
 import time
 import heapq
 import os
+import sys
+import signal
 
 # Configurações de endereço e porta
 HOST = '127.0.0.1'  # 'localhost' (escuta apenas conexões locais)
 PORT = 65432        # Portas acima de 1023 não exigem privilégios de administrador
 dicionario = dict()
 heap = []
-arquivo_log = open('log.aof', 'a')
 
 sel = selectors.DefaultSelector()
-
-server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-server_socket.bind((HOST, PORT))
-server_socket.listen()
-server_socket.setblocking(False)
-
-sel.register(server_socket, selectors.EVENT_READ, None)
 
 
 def aplicar_comando(linha):
@@ -61,7 +54,7 @@ def aceitar_conexao(server_socket):
     sel.register(client_socket, selectors.EVENT_READ, dado_extra)
 
 
-def atender_cliente(client_socket, dado_extra):
+def atender_cliente(client_socket, dado_extra, arquivo_log):
 
     data = client_socket.recv(1024)
 
@@ -127,12 +120,32 @@ def expirar_chaves():
         if chave_heap in dicionario and dicionario[chave_heap][1] == quando_expira_heap:
             dicionario.pop(chave_heap)
 
-with open('log.aof', 'r') as log:
-    for linha in log:
-        linha = linha.strip()
-        aplicar_comando(linha)
+def tratar_sinal(signum, frame):
+    print("\n[*] Sinal de encerramento recebido...")
+    arquivo_log.close()
+    sel.close()
+    server_socket.close()
+    sys.exit(0)
 
-try:
+if __name__ == "__main__":
+    arquivo_log = open('log.aof', 'a')
+
+    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    server_socket.bind((HOST, PORT))
+    server_socket.listen()
+    server_socket.setblocking(False)
+
+    sel.register(server_socket, selectors.EVENT_READ, None)
+
+    signal.signal(signal.SIGINT, tratar_sinal)
+    signal.signal(signal.SIGTERM, tratar_sinal)
+
+    with open('log.aof', 'r') as log:
+        for linha in log:
+            linha = linha.strip()
+            aplicar_comando(linha)
+
     while True:
         eventos = sel.select(timeout=1)
 
@@ -145,9 +158,5 @@ try:
             if dado_extra is None:
                 aceitar_conexao(socket_pronto)
             else:
-                atender_cliente(socket_pronto, dado_extra)
-except KeyboardInterrupt:
-    print("\n[*] Encerrando servidor...")
-finally:
-    sel.close()
-    server_socket.close()
+                atender_cliente(socket_pronto, dado_extra, arquivo_log)
+        
