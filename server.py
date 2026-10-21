@@ -20,22 +20,22 @@ def aplicar_comando(linha):
     comando = parse[0]
     chave = parse[1]
 
-    if len(parse) >= 2 and parse[-2].upper() == "EX":
-        ttl = int(parse[-1])
-        valor = " ".join(parse[2:-2])
-    else:
-        ttl = -1
-        valor = " ".join(parse[2:])
+    quando_expira = -1
+    valor = " ".join(parse[2:])
 
+    if len(parse) >= 4 and parse[-2].upper() in ("EX", "PXAT"):
+        valor = " ".join(parse[2:-2])
+        numero = int(parse[-1])
+        if parse[-2].upper() == "EX":
+            quando_expira = int(time.time() * 1000 + numero * 1000)
+        else:
+            quando_expira = numero
 
     if comando.upper() == 'SET':
-        agora = time.time() * 1000
-        if ttl == -1:
-            quando_expira = -1
-        else:
-            quando_expira = agora + (ttl * 1000) 
-            heapq.heappush(heap, (quando_expira, chave))        
+        if quando_expira != -1:
+            heapq.heappush(heap, (quando_expira, chave))
         dicionario[chave] = (valor, quando_expira)
+        return quando_expira
     elif comando.upper() == 'DEL':
         try:
             dicionario.pop(chave)
@@ -76,17 +76,18 @@ def atender_cliente(client_socket, dado_extra, arquivo_log):
         chave = parse[1]
 
         if len(parse) >= 2 and parse[-2].upper() == "EX":
-            ttl = int(parse[-1])
             valor = " ".join(parse[2:-2])
         else:
-            ttl = -1
             valor = " ".join(parse[2:])
 
         resposta = ""
 
         if comando.upper() == 'SET':
-            aplicar_comando(linha)
-            arquivo_log.write(f'{linha}\n')
+            quando_expira = aplicar_comando(linha)
+            if quando_expira != -1:
+                arquivo_log.write(f'{comando} {chave} {valor} PXAT {quando_expira}\n')
+            else:
+                arquivo_log.write(f'{linha}\n')
             arquivo_log.flush()
             os.fsync(arquivo_log.fileno())
             resposta = "OK\n"
