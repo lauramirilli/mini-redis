@@ -66,9 +66,7 @@ def atender_cliente(client_socket, dado_extra, arquivo_log):
 
     dado_extra["buffer"] += data.decode('utf-8')
 
-    if '\n' not in dado_extra["buffer"]:
-        return
-    else:
+    while '\n' in dado_extra["buffer"]:
         linha, dado_extra["buffer"] = dado_extra["buffer"].split("\n", 1)
         
         parse = linha.split(" ")
