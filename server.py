@@ -5,6 +5,7 @@ import heapq
 import os
 import sys
 import signal
+import traceback
 
 # Configurações de endereço e porta
 HOST = '127.0.0.1'  # 'localhost' (escuta apenas conexões locais)
@@ -15,33 +16,35 @@ heap = []
 sel = selectors.DefaultSelector()
 
 COMANDOS = {
-    'GET': (2,),
+    'GET': (1,),
     'DEL': (2,),
-    'SET': (3, 5),
+    'SET': (2, 4),
 }
 
-def aplicar_comando(linha):
+def parsear(linha):
     parse = linha.split(" ")
-    comando = parse[0]
-    chave = parse[1]
+    return parse[0].upper(), parse[1:]
 
+def aplicar_comando(linha):
+    comando, args = parsear(linha)
+    chave = args[0]
     quando_expira = -1
-    valor = " ".join(parse[2:])
 
-    if len(parse) >= 4 and parse[-2].upper() in ("EX", "PXAT"):
-        valor = " ".join(parse[2:-2])
-        numero = int(parse[-1])
-        if parse[-2].upper() == "EX":
+    if len(args) == 4:
+        opcao = args[2].upper()
+        numero = int(args[3])
+        if opcao == "EX":
             quando_expira = int(time.time() * 1000 + numero * 1000)
-        else:
+        elif opcao == "PXAT":
             quando_expira = numero
 
-    if comando.upper() == 'SET':
+    if comando == 'SET':
+        valor = args[1]
         if quando_expira != -1:
             heapq.heappush(heap, (quando_expira, chave))
         dicionario[chave] = (valor, quando_expira)
         return quando_expira
-    elif comando.upper() == 'DEL':
+    elif comando == 'DEL':
         try:
             dicionario.pop(chave)
             return True
@@ -75,23 +78,21 @@ def atender_cliente(client_socket, dado_extra, arquivo_log):
         linha, dado_extra["buffer"] = dado_extra["buffer"].split("\n", 1)
 
         try:
-            parse = linha.split(" ")
-            comando = parse[0].upper()
+            comando, args = parsear(linha)
 
             if comando not in COMANDOS:
-                resposta = f"ERR unknown command '{parse[0]}', with args beginning with: {' '.join(parse[1:])}\n"
+                resposta = f"ERR unknown command '{comando.lower()}', with args beginning with: {' '.join(args)}\n"
+
+            elif len(args) not in COMANDOS[comando]:
+                resposta = f"ERR wrong number of arguments for '{comando.lower()}' command\n"
+            
             else:
-                chave = parse[1]
-
-                if len(parse) >= 2 and parse[-2].upper() == "EX":
-                    valor = " ".join(parse[2:-2])
-                else:
-                    valor = " ".join(parse[2:])
-
+                chave = args[0]
                 resposta = ""
 
-                if comando.upper() == 'SET':
+                if comando == 'SET':
                     quando_expira = aplicar_comando(linha)
+                    valor = args[1]
                     if quando_expira != -1:
                         arquivo_log.write(f'{comando} {chave} {valor} PXAT {quando_expira}\n')
                     else:
@@ -99,7 +100,7 @@ def atender_cliente(client_socket, dado_extra, arquivo_log):
                     arquivo_log.flush()
                     os.fsync(arquivo_log.fileno())
                     resposta = "OK\n"
-                elif comando.upper() == 'GET':
+                elif comando == 'GET':
                     valor, quando_expira = dicionario.get(chave, ("chave não existe", -1))
                     agora = time.time() * 1000
                     if quando_expira == -1 or agora <= quando_expira:
@@ -107,7 +108,7 @@ def atender_cliente(client_socket, dado_extra, arquivo_log):
                     else:
                         dicionario.pop(chave)
                         resposta = f"a chave {chave} expirou\n"
-                elif comando.upper() == 'DEL':
+                elif comando == 'DEL':
                     sucesso = aplicar_comando(linha)
                     if sucesso:
                         arquivo_log.write(f'{linha}\n')
@@ -118,7 +119,9 @@ def atender_cliente(client_socket, dado_extra, arquivo_log):
                         resposta = "chave não existe\n"
                 
         except Exception as erro:
-            print(f"[ERRO] {linha!r}: {erro!r}")
+            # print(f"[ERRO] {linha!r}: {erro!r}")
+            # resposta = "ERR\n"
+            traceback.print_exc()
             resposta = "ERR\n"
 
         print(f"[Recebido]: {linha}")
@@ -157,6 +160,8 @@ if __name__ == "__main__":
     with open('log.aof', 'r') as log:
         for linha in log:
             linha = linha.strip()
+            if not linha:
+                continue
             aplicar_comando(linha)
 
     while True:
