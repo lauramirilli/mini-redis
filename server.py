@@ -68,47 +68,52 @@ def atender_cliente(client_socket, dado_extra, arquivo_log):
 
     while '\n' in dado_extra["buffer"]:
         linha, dado_extra["buffer"] = dado_extra["buffer"].split("\n", 1)
-        
-        parse = linha.split(" ")
-        comando = parse[0]
-        chave = parse[1]
 
-        if len(parse) >= 2 and parse[-2].upper() == "EX":
-            valor = " ".join(parse[2:-2])
-        else:
-            valor = " ".join(parse[2:])
+        try:
+            parse = linha.split(" ")
+            comando = parse[0]
+            chave = parse[1]
 
-        resposta = ""
-
-        if comando.upper() == 'SET':
-            quando_expira = aplicar_comando(linha)
-            if quando_expira != -1:
-                arquivo_log.write(f'{comando} {chave} {valor} PXAT {quando_expira}\n')
+            if len(parse) >= 2 and parse[-2].upper() == "EX":
+                valor = " ".join(parse[2:-2])
             else:
-                arquivo_log.write(f'{linha}\n')
-            arquivo_log.flush()
-            os.fsync(arquivo_log.fileno())
-            resposta = "OK\n"
-        elif comando.upper() == 'GET':
-            valor, quando_expira = dicionario.get(chave, ("chave não existe", -1))
-            agora = time.time() * 1000
-            if quando_expira == -1 or agora <= quando_expira:
-                resposta = f"{valor}\n"
-            else:
-                dicionario.pop(chave)
-                resposta = f"a chave {chave} expirou\n"
-        elif comando.upper() == 'DEL':
-            sucesso = aplicar_comando(linha)
-            if sucesso:
-                arquivo_log.write(f'{linha}\n')
+                valor = " ".join(parse[2:])
+
+            resposta = ""
+
+            if comando.upper() == 'SET':
+                quando_expira = aplicar_comando(linha)
+                if quando_expira != -1:
+                    arquivo_log.write(f'{comando} {chave} {valor} PXAT {quando_expira}\n')
+                else:
+                    arquivo_log.write(f'{linha}\n')
                 arquivo_log.flush()
                 os.fsync(arquivo_log.fileno())
                 resposta = "OK\n"
-            else:
-                resposta = "chave não existe\n"
-            
+            elif comando.upper() == 'GET':
+                valor, quando_expira = dicionario.get(chave, ("chave não existe", -1))
+                agora = time.time() * 1000
+                if quando_expira == -1 or agora <= quando_expira:
+                    resposta = f"{valor}\n"
+                else:
+                    dicionario.pop(chave)
+                    resposta = f"a chave {chave} expirou\n"
+            elif comando.upper() == 'DEL':
+                sucesso = aplicar_comando(linha)
+                if sucesso:
+                    arquivo_log.write(f'{linha}\n')
+                    arquivo_log.flush()
+                    os.fsync(arquivo_log.fileno())
+                    resposta = "OK\n"
+                else:
+                    resposta = "chave não existe\n"
+                
+        except Exception as erro:
+            print(f"[ERRO] {linha!r}: {erro!r}")
+            resposta = "ERR\n"
+
         print(f"[Recebido]: {linha}")
-        
+                    
         # Envia os dados de volta para o cliente (Echo)
         client_socket.sendall(resposta.encode('utf-8'))
 
