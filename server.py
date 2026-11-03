@@ -78,7 +78,7 @@ def aceitar_conexao(server_socket):
 
     client_socket.setblocking(False)
 
-    dado_extra = {"buffer": ""}
+    dado_extra = {"buffer": b""}
     sel.register(client_socket, selectors.EVENT_READ, dado_extra)
 
 
@@ -92,12 +92,13 @@ def atender_cliente(client_socket, dado_extra, arquivo_log):
         client_socket.close()
         return
 
-    dado_extra["buffer"] += data.decode('utf-8')
+    dado_extra["buffer"] += data
 
-    while '\n' in dado_extra["buffer"]:
-        linha, dado_extra["buffer"] = dado_extra["buffer"].split("\n", 1)
+    while b'\n' in dado_extra["buffer"]:
+        linha_bytes, dado_extra["buffer"] = dado_extra["buffer"].split(b"\n", 1)
 
         try:
+            linha = linha_bytes.decode('utf-8')
             comando, args = parsear(linha)
 
             if comando not in COMANDOS:
@@ -148,7 +149,7 @@ def atender_cliente(client_socket, dado_extra, arquivo_log):
             traceback.print_exc()
             resposta = "ERR\n"
 
-        print(f"[Recebido]: {linha}")
+        print(f"[Recebido]: {linha_bytes!r}")
                     
         # Envia os dados de volta para o cliente (Echo)
         client_socket.sendall(resposta.encode('utf-8'))
