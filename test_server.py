@@ -18,10 +18,12 @@ def test_set_com_ttl():
 
 def test_del_chave_existe():
     aplicar_comando('SET nome Laura')
-    assert aplicar_comando('DEL nome') == True
+    apagados = aplicar_comando('DEL nome chaveinexistente')
+    assert apagados > 0
 
 def test_del_chave_inexistente():
-    assert aplicar_comando('DEL nome') == False
+    apagados = aplicar_comando('DEL nome')
+    assert apagados == 0
 
 def test_validar_set():
     linha = "SET a b EX -2"

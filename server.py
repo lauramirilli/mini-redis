@@ -16,8 +16,9 @@ heap = []
 sel = selectors.DefaultSelector()
 
 COMANDOS = {
+          #mínimo e máximo de argumentos que o comando recebe
     'GET': (1, 1),
-    'DEL': (2, 1),
+    'DEL': (1, None),
     'SET': (2, None),
 }
 
@@ -29,11 +30,11 @@ def validar_set(args):
     if len(args) == 2:
         return None
     if len(args) != 4:
-        return "ERR syntax error argumentos\n"
+        return "ERR syntax error\n"
     
     opcao = args[2]
     if opcao.upper() not in ("EX", "PXAT"):
-        return "ERR syntax error opcao errada\n"
+        return "ERR syntax error\n"
     
     try:
         numero = int(args[3])
@@ -65,11 +66,12 @@ def aplicar_comando(linha):
         dicionario[chave] = (valor, quando_expira)
         return quando_expira
     elif comando == 'DEL':
-        try:
-            dicionario.pop(chave)
-            return True
-        except KeyError:
-            return False
+        apagados = 0
+        for chave in args:
+            if chave in dicionario:
+                dicionario.pop(chave)
+                apagados += 1
+        return apagados
 
 def aceitar_conexao(server_socket):
 
@@ -126,26 +128,22 @@ def atender_cliente(client_socket, dado_extra, arquivo_log):
                         os.fsync(arquivo_log.fileno())
                         resposta = "OK\n"
                 elif comando == 'GET':
-                    valor, quando_expira = dicionario.get(chave, ("chave não existe", -1))
+                    valor, quando_expira = dicionario.get(chave, ("(nil)", -1))
                     agora = time.time() * 1000
                     if quando_expira == -1 or agora <= quando_expira:
                         resposta = f"{valor}\n"
                     else:
                         dicionario.pop(chave)
-                        resposta = f"a chave {chave} expirou\n"
+                        resposta = f"(nil)\n"
                 elif comando == 'DEL':
-                    sucesso = aplicar_comando(linha)
-                    if sucesso:
+                    apagados = aplicar_comando(linha)
+                    if apagados > 0:
                         arquivo_log.write(f'{linha}\n')
                         arquivo_log.flush()
                         os.fsync(arquivo_log.fileno())
-                        resposta = "OK\n"
-                    else:
-                        resposta = "chave não existe\n"
+                    resposta = f"(integer) {apagados}\n"
                 
         except Exception as erro:
-            # print(f"[ERRO] {linha!r}: {erro!r}")
-            # resposta = "ERR\n"
             traceback.print_exc()
             resposta = "ERR\n"
 
