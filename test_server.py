@@ -1,4 +1,4 @@
-from server import aplicar_comando, dicionario, heap
+from server import aplicar_comando, dicionario, heap, validar_set
 import pytest
 
 @pytest.fixture(autouse=True)
@@ -22,3 +22,12 @@ def test_del_chave_existe():
 
 def test_del_chave_inexistente():
     assert aplicar_comando('DEL nome') == False
+
+def test_validar_set():
+    linha = "SET a b EX -2"
+    def parsear(linha):
+        parse = linha.split(" ")
+        return parse[1:]
+    args = parsear(linha)
+    
+    assert validar_set(args) == "ERR invalid expire time in 'set' command\n"

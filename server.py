@@ -16,14 +16,34 @@ heap = []
 sel = selectors.DefaultSelector()
 
 COMANDOS = {
-    'GET': (1,),
-    'DEL': (2,),
-    'SET': (2, 4),
+    'GET': (1, 1),
+    'DEL': (2, 1),
+    'SET': (2, None),
 }
 
 def parsear(linha):
     parse = linha.split(" ")
     return parse[0].upper(), parse[1:]
+
+def validar_set(args):
+    if len(args) == 2:
+        return None
+    if len(args) != 4:
+        return "ERR syntax error argumentos\n"
+    
+    opcao = args[2]
+    if opcao.upper() not in ("EX", "PXAT"):
+        return "ERR syntax error opcao errada\n"
+    
+    try:
+        numero = int(args[3])
+    except ValueError:
+        return "ERR value is not an integer or out of range\n"
+
+    if numero <= 0:
+        return "ERR invalid expire time in 'set' command\n"
+    
+    return None
 
 def aplicar_comando(linha):
     comando, args = parsear(linha)
@@ -83,7 +103,7 @@ def atender_cliente(client_socket, dado_extra, arquivo_log):
             if comando not in COMANDOS:
                 resposta = f"ERR unknown command '{comando.lower()}', with args beginning with: {' '.join(args)}\n"
 
-            elif len(args) not in COMANDOS[comando]:
+            elif len(args) < COMANDOS[comando][0] or (COMANDOS[comando][1] is not None and len(args) > COMANDOS[comando][1]):
                 resposta = f"ERR wrong number of arguments for '{comando.lower()}' command\n"
             
             else:
@@ -91,15 +111,19 @@ def atender_cliente(client_socket, dado_extra, arquivo_log):
                 resposta = ""
 
                 if comando == 'SET':
-                    quando_expira = aplicar_comando(linha)
-                    valor = args[1]
-                    if quando_expira != -1:
-                        arquivo_log.write(f'{comando} {chave} {valor} PXAT {quando_expira}\n')
+                    erro = validar_set(args)
+                    if erro:
+                        resposta = erro
                     else:
-                        arquivo_log.write(f'{linha}\n')
-                    arquivo_log.flush()
-                    os.fsync(arquivo_log.fileno())
-                    resposta = "OK\n"
+                        quando_expira = aplicar_comando(linha)
+                        valor = args[1]
+                        if quando_expira != -1:
+                            arquivo_log.write(f'{comando} {chave} {valor} PXAT {quando_expira}\n')
+                        else:
+                            arquivo_log.write(f'{linha}\n')
+                        arquivo_log.flush()
+                        os.fsync(arquivo_log.fileno())
+                        resposta = "OK\n"
                 elif comando == 'GET':
                     valor, quando_expira = dicionario.get(chave, ("chave não existe", -1))
                     agora = time.time() * 1000
